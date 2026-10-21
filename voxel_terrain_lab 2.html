@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voxel Terrain Lab</title>
+<style>
+:root{color-scheme:dark;--bg:#10131a;--panel:#181d27;--line:#2b3444;--text:#e7edf7;--muted:#9ba8bc;--accent:#76a9ff}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,sans-serif}
+#app{height:100%;display:grid;grid-template-columns:minmax(300px,1fr) 2fr}
+#editorPanel{min-width:0;display:flex;flex-direction:column;background:var(--panel);border-right:1px solid var(--line)}
+header{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px}
+h1{font-size:16px;margin:0;font-weight:700}.sub{font-size:11px;color:var(--muted)}
+#code{flex:1;min-height:0;width:100%;resize:none;border:0;outline:0;background:#0c1017;color:#d9e7ff;padding:14px;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;tab-size:2;white-space:pre;overflow:auto}
+.tabbar{display:flex;align-items:center;gap:6px;padding:7px 10px;background:#141923;border-bottom:1px solid var(--line)}.tabbar button{padding:6px 9px;font-size:12px}.tabbar button.active{background:#3976dc;border-color:#5289e4}#saveState{margin-left:auto;color:#7fae91;font-size:11px}#docs{flex:1;min-height:0;overflow:auto;padding:14px;font-size:12px;line-height:1.55;color:#cbd6e7}#docs h3{font-size:14px;color:#fff;margin:12px 0 4px}#docs code{color:#9ec4ff}#docs pre{white-space:pre-wrap;background:#0c1017;padding:8px;border-radius:6px;overflow-wrap:anywhere}
+#controls{padding:12px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.row label{color:var(--muted);font-size:12px}.row input{width:64px;background:#0c1017;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:7px}
+button,select{background:#252e3d;color:var(--text);border:1px solid #3b4960;border-radius:7px;padding:8px 10px;cursor:pointer}
+button.primary{background:#3976dc;border-color:#5289e4;font-weight:700}button:hover{filter:brightness(1.12)}
+#status{font-size:12px;color:var(--muted);min-height:18px;overflow-wrap:anywhere}#help{font-size:11px;color:var(--muted)}
+#viewPanel{position:relative;min-width:0;min-height:0;overflow:hidden}#viewport{position:absolute;inset:0;touch-action:none}
+#overlay{position:absolute;left:14px;top:12px;pointer-events:none;text-shadow:0 1px 4px #000;line-height:1.5}
+#overlay strong{font-size:14px}#overlay span{display:block;color:#aab8cb;font-size:11px}
+#viewTools{position:absolute;right:12px;top:12px;display:flex;gap:6px}
+@media(max-width:760px){#app{grid-template-columns:42% 58%}header{padding:9px}h1{font-size:13px}#controls{padding:8px;gap:7px}.row{gap:5px}.row input{width:49px;padding:6px}button,select{padding:7px;font-size:12px}#code{padding:9px;font-size:11px}}
+</style>
+</head>
+<body>
+<div id="app">
+<section id="editorPanel">
+<header><div><h1>Voxel Terrain Lab</h1><div class="sub">地形生成コード / JavaScript</div></div><button id="resetCode">初期コード</button></header>
+<div class="tabbar"><button id="codeTab" class="active">コード</button><button id="docsTab">関数ドキュメント</button><span id="saveState">自動保存 ON</span></div><textarea id="code" spellcheck="false" aria-label="JavaScript terrain code">// main(x, y, z) はブロック情報を返します。
+// 空気: null / { id: 0 }
+// ブロック: { id: 1, color: "#55aa44" }
+// color は #RRGGBB または #RRGGBBAA に対応。
+// main(x,y,z) を呼んで隣のブロックを調べることもできます。
+
+function main(x, y, z) {
+  const h = 12
+    + noise2D(x * 0.045, z * 0.045, 731) * 8
+    + noise2D(x * 0.12, z * 0.12, 91) * 3;
+
+  if (y > h) return null;
+  if (y === Math.floor(h)) return { id: 1, color: "#71b85a" };
+  if (y > h - 3) return { id: 2, color: "#98744c" };
+  return { id: 3, color: "#777d86" };
+}</textarea><div id="docs" hidden></div>
+<div id="controls">
+<div class="row"><label>幅 X/Z</label><input id="width" type="number" min="4" max="2048" value="32"><label>高さ Y</label><input id="height" type="number" min="4" max="256" value="32"></div>
+<div class="row"><button id="run" class="primary">▶ 生成・更新</button><button id="home">視点リセット</button><label><input id="wire" type="checkbox" style="width:auto;vertical-align:middle"> ワイヤー</label></div>
+<div id="status">準備完了</div>
+<div id="help">ドラッグ: 回転 / ホイール・ピンチ: ズーム / 右ドラッグ: 移動<br>用意済み: noise2D, valueNoise3D, perlin3D, hash3D, lerp, clamp</div>
+</div>
+</section>
+<section id="viewPanel"><div id="viewport"></div><div id="overlay"><strong>3D Preview</strong><span>ドラッグして地形を確認</span></div><div id="viewTools"><button id="viewTop">上から</button><button id="viewIso">斜め</button></div></section>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js';
+const $=id=>document.getElementById(id);
+const code=$('code'), viewport=$('viewport'), status=$('status');
+const initialCode=code.value;
+const STORAGE_KEY='voxelTerrainLab.code.v1';
+try{const saved=localStorage.getItem(STORAGE_KEY);if(saved!==null)code.value=saved;}catch{}
+let saveTimer;
+code.addEventListener('input',()=>{$('saveState').textContent='保存中…';clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(STORAGE_KEY,code.value);$('saveState').textContent='自動保存済み';}catch{$('saveState').textContent='保存不可';}},250);});
+const docsHTML=`<h2>関数ドキュメント</h2><p>コード欄から呼び出せる関数一覧です。同じ座標と seed なら同じ値を返します。</p><h3>main(x, y, z)</h3><p>各ブロックの情報を返します。空気は <code>null</code> または <code>{ id: 0 }</code>。ブロックは <code>{ id: 1, color: "#55aa44" }</code>。隣接位置の参照にも使えます（例: <code>main(x+1,y,z)</code>）。範囲外は <code>null</code> です。</p><h3>noise2D(x, z, seed=0)</h3><p>2Dバリューノイズ。地表の起伏向け。おおむね -1〜1。</p><h3>valueNoise3D(x, y, z, seed=0)</h3><p>3Dバリューノイズ。密度場や洞窟生成向け。おおむね -1〜1。</p><h3>perlin3D(x, y, z, seed=0)</h3><p>3Dパーリン系ノイズ。滑らかな密度変化向け。おおむね -1〜1。</p><h3>hash3D(x, y, z, seed=0)</h3><p>整数座標と seed から決定的な疑似乱数を生成。0〜1。</p><h3>lerp(a, b, t)</h3><p><code>a</code> から <code>b</code> へ <code>t</code> の割合で線形補間します。</p><h3>clamp(v, min, max)</h3><p>値を指定範囲内に収めます。</p><h3>サンプル：3D洞窟</h3><pre>function main(x, y, z) {
+  const density = y - 14 +
+    perlin3D(x * 0.06, y * 0.06, z * 0.06, 42) * 8;
+  if (density > 0) return null;
+  return { id: 1, color: y > 12 ? "#8b8f98" : "#6c7078" };
+}</pre><p><strong>大きなサイズでは</strong>プレビュー負荷を抑えるため表示用にボクセルを間引きます。main に渡される座標は元の地形座標です。</p>`;
+$('docs').innerHTML=docsHTML;
+$('codeTab').onclick=()=>{code.hidden=false;$('docs').hidden=true;$('codeTab').classList.add('active');$('docsTab').classList.remove('active')};
+$('docsTab').onclick=()=>{code.hidden=true;$('docs').hidden=false;$('docsTab').classList.add('active');$('codeTab').classList.remove('active')};
+let renderer,scene,camera,mesh,wireMesh,grid,worldGroup;
+let dims={x:32,y:32,z:32};
+let target=new THREE.Vector3(16,10,16), radius=62, theta=Math.PI/4, phi=1.0;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function hash3D(x,y,z,seed=0){let n=Math.imul(x|0,374761393)^Math.imul(y|0,668265263)^Math.imul(z|0,2147483647)^Math.imul(seed|0,1274126177);n=Math.imul(n^(n>>>13),1274126177);n=Math.imul(n^(n>>>16),2246822519);n^=n>>>13;return (n>>>0)/4294967295}
+function lerp(a,b,t){return a+(b-a)*t}
+function fade(t){return t*t*t*(t*(t*6-15)+10)}
+function valueNoise3D(x,y,z,seed=0){
+ const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z),fx=fade(x-ix),fy=fade(y-iy),fz=fade(z-iz);
+ const a=lerp(hash3D(ix,iy,iz,seed),hash3D(ix+1,iy,iz,seed),fx),b=lerp(hash3D(ix,iy+1,iz,seed),hash3D(ix+1,iy+1,iz,seed),fx);
+ const c=lerp(hash3D(ix,iy,iz+1,seed),hash3D(ix+1,iy,iz+1,seed),fx),d=lerp(hash3D(ix,iy+1,iz+1,seed),hash3D(ix+1,iy+1,iz+1,seed),fx);
+ return lerp(lerp(a,b,fy),lerp(c,d,fy),fz)*2-1;
+}
+const GRAD=[[1,1,0],[-1,1,0],[1,-1,0],[-1,-1,0],[1,0,1],[-1,0,1],[1,0,-1],[-1,0,-1],[0,1,1],[0,-1,1],[0,1,-1],[0,-1,-1]];
+function perlin3D(x,y,z,seed=0){
+ const X=Math.floor(x),Y=Math.floor(y),Z=Math.floor(z),u=fade(x-X),v=fade(y-Y),w=fade(z-Z);
+ const dot=(ix,iy,iz,dx,dy,dz)=>{const g=GRAD[Math.floor(hash3D(ix,iy,iz,seed)*12)%12];return g[0]*dx+g[1]*dy+g[2]*dz};
+ const n=(dx,dy,dz)=>dot(X+dx,Y+dy,Z+dz,x-X-dx,y-Y-dy,z-Z-dz);
+ return lerp(lerp(lerp(n(0,0,0),n(1,0,0),u),lerp(n(0,1,0),n(1,1,0),u),v),lerp(lerp(n(0,0,1),n(1,0,1),u),lerp(n(0,1,1),n(1,1,1),u),v),w)*0.9;
+}
+function noise2D(x,z,seed=0){return valueNoise3D(x,seed*0.001,z,seed)}
+function init(){
+ renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(viewport.clientWidth,viewport.clientHeight);renderer.setClearColor(0x101722);renderer.outputColorSpace=THREE.SRGBColorSpace;viewport.appendChild(renderer.domElement);
+ scene=new THREE.Scene();scene.background=new THREE.Color(0x101722);scene.fog=new THREE.Fog(0x101722,300,5000);
+ camera=new THREE.PerspectiveCamera(45,viewport.clientWidth/viewport.clientHeight,.1,10000);
+ scene.add(new THREE.HemisphereLight(0xcce1ff,0x493d32,2.0));
+ const sun=new THREE.DirectionalLight(0xfff2d9,2.2);sun.position.set(-40,80,35);scene.add(sun);
+ worldGroup=new THREE.Group();scene.add(worldGroup);
+ grid=new THREE.GridHelper(160,80,0x354359,0x263244);grid.position.y=-.51;scene.add(grid);
+ setupControls();resize();homeView();animate();
+}
+function setupControls(){
+ let down=false,button=0,lastX=0,lastY=0;
+ viewport.addEventListener('pointerdown',e=>{down=true;button=e.button;lastX=e.clientX;lastY=e.clientY;viewport.setPointerCapture(e.pointerId)});
+ viewport.addEventListener('pointerup',()=>down=false);viewport.addEventListener('pointercancel',()=>down=false);
+ viewport.addEventListener('pointermove',e=>{if(!down)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;if(button===2||e.shiftKey){const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);const up=new THREE.Vector3().setFromMatrixColumn(camera.matrix,1);target.addScaledVector(right,-dx*radius*.0015);target.addScaledVector(up,dy*radius*.0015)}else{theta-=dx*.008;phi=clamp(phi+dy*.008,.08,Math.PI-.08)}updateCamera()});
+ viewport.addEventListener('contextmenu',e=>e.preventDefault());
+ viewport.addEventListener('wheel',e=>{e.preventDefault();radius=clamp(radius*Math.exp(e.deltaY*.001),4,5000);updateCamera()},{passive:false});
+ let pinch=0;viewport.addEventListener('touchstart',e=>{if(e.touches.length===2)pinch=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY)},{passive:true});
+ viewport.addEventListener('touchmove',e=>{if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);if(pinch)radius=clamp(radius*pinch/d,4,5000);pinch=d;updateCamera()}},{passive:true});
+ window.addEventListener('resize',resize);
+}
+function resize(){if(!renderer)return;const w=viewport.clientWidth,h=viewport.clientHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix()}
+function updateCamera(){camera.position.set(target.x+radius*Math.sin(phi)*Math.sin(theta),target.y+radius*Math.cos(phi),target.z+radius*Math.sin(phi)*Math.cos(theta));camera.lookAt(target)}
+function homeView(){target.set(dims.x/2,dims.y/2,dims.z/2);radius=Math.max(dims.x,dims.y,dims.z)*1.8;theta=Math.PI/4;phi=1.0;updateCamera()}
+function animate(){requestAnimationFrame(animate);if(renderer)renderer.render(scene,camera)}
+function clearWorld(){while(worldGroup.children.length){const o=worldGroup.children.pop();if(o.geometry)o.geometry.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose()}}}
+function parseColor(c){try{if(typeof c==='number')return new THREE.Color(c);return new THREE.Color(c||'#8a9aaa')}catch{return new THREE.Color('#ff00ff')}}
+function build(){
+ const W=clamp(parseInt($('width').value)||32,4,2048),H=clamp(parseInt($('height').value)||32,4,256);dims={x:W,y:H,z:W};$('width').value=W;$('height').value=H;
+ const source=code.value;
+ let userMain;
+ try{const renamed=source.replace(/\bfunction\s+main\s*\(/, 'function userMain(');userMain=new Function('noise2D','valueNoise3D','perlin3D','hash3D','lerp','clamp',`${renamed}\n; if(typeof userMain !== "function") throw new Error("function main(x,y,z) が見つかりません"); return userMain;`)(noise2D,valueNoise3D,perlin3D,hash3D,lerp,clamp)}
+ catch(e){status.textContent='コードエラー: '+e.message;return}
+ const cache=new Map(),active=new Set();let calls=0;
+ const key=(x,y,z)=>`${x},${y},${z}`;
+ function sample(x,y,z){
+  x=Math.floor(x);y=Math.floor(y);z=Math.floor(z);if(x<0||x>=W||y<0||y>=H||z<0||z>=W)return null;
+  const k=key(x,y,z);if(cache.has(k))return cache.get(k);if(active.has(k))return null;
+  active.add(k);let v=null;
+  try{v=userMain(x,y,z);calls++}catch(e){throw new Error(`main(${x},${y},${z}): ${e.message}`)}
+  active.delete(k);if(v&&typeof v==='object'&&v.id!==0){v={id:v.id??1,color:v.color??'#8a9aaa'};}else v=null;
+  cache.set(k,v);return v;
+ }
+ // The user function calls the globally exposed wrapper `main` for neighbors.
+ const oldMain=globalThis.main;globalThis.main=sample;
+ try{
+  status.textContent='生成中…';
+  const step=Math.max(1,Math.ceil(Math.cbrt((W*H*W)/120000)));
+  const PW=Math.ceil(W/step),PH=Math.ceil(H/step),PZ=PW;
+  const vox=new Array(PW*PH*PZ);const idx=(x,y,z)=>(y*PZ+z)*PW+x;
+  for(let y=0;y<PH;y++)for(let z=0;z<PZ;z++)for(let x=0;x<PW;x++)vox[idx(x,y,z)]=sample(Math.min(W-1,x*step),Math.min(H-1,y*step),Math.min(W-1,z*step));
+  const positions=[],normals=[],colors=[],indices=[];let faceCount=0;
+  const faces=[
+   {d:[1,0,0],n:[1,0,0],v:[[.5,-.5,-.5],[.5,.5,-.5],[.5,.5,.5],[.5,-.5,.5]]},
+   {d:[-1,0,0],n:[-1,0,0],v:[[-.5,-.5,.5],[-.5,.5,.5],[-.5,.5,-.5],[-.5,-.5,-.5]]},
+   {d:[0,1,0],n:[0,1,0],v:[[-.5,.5,.5],[.5,.5,.5],[.5,.5,-.5],[-.5,.5,-.5]]},
+   {d:[0,-1,0],n:[0,-1,0],v:[[-.5,-.5,-.5],[.5,-.5,-.5],[.5,-.5,.5],[-.5,-.5,.5]]},
+   {d:[0,0,1],n:[0,0,1],v:[[.5,-.5,.5],[.5,.5,.5],[-.5,.5,.5],[-.5,-.5,.5]]},
+   {d:[0,0,-1],n:[0,0,-1],v:[[-.5,-.5,-.5],[-.5,.5,-.5],[.5,.5,-.5],[.5,-.5,-.5]]}
+  ];
+  for(let y=0;y<PH;y++)for(let z=0;z<PZ;z++)for(let x=0;x<PW;x++){
+   const b=vox[idx(x,y,z)];if(!b)continue;const col=parseColor(b.color);
+   for(const f of faces){const nx=x+f.d[0],ny=y+f.d[1],nz=z+f.d[2];const nb=nx<0||nx>=PW||ny<0||ny>=PH||nz<0||nz>=PZ?null:vox[idx(nx,ny,nz)];if(nb)continue;
+    const base=positions.length/3;for(const v of f.v){positions.push(x*step+(step-1)/2+v[0]*step,y*step+(step-1)/2+v[1]*step,z*step+(step-1)/2+v[2]*step);normals.push(...f.n);colors.push(col.r,col.g,col.b)}
+    indices.push(base,base+1,base+2,base,base+2,base+3);faceCount++;
+   }
+  }
+  clearWorld();const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));geo.setAttribute('normal',new THREE.Float32BufferAttribute(normals,3));geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));geo.setIndex(indices);geo.computeBoundingSphere();
+  const mat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.92,metalness:0,wireframe:$('wire').checked});mesh=new THREE.Mesh(geo,mat);worldGroup.add(mesh);
+  target.set(W/2,H/2,W/2);grid.position.y=-.51;homeView();
+  status.textContent=`完了: ${W}×${H}×${W} / preview間引き ${step} / 表示 ${vox.length.toLocaleString()} voxel / ${faceCount.toLocaleString()} 表面ポリゴン / main実行 ${calls.toLocaleString()} 回`;
+ }catch(e){status.textContent='実行エラー: '+e.message}
+ finally{if(oldMain===undefined)delete globalThis.main;else globalThis.main=oldMain}
+}
+$('run').addEventListener('click',build);$('resetCode').addEventListener('click',()=>{code.value=initialCode;try{localStorage.setItem(STORAGE_KEY,code.value);$('saveState').textContent='初期コードを保存';}catch{}build()});
+$('home').addEventListener('click',homeView);$('wire').addEventListener('change',build);
+$('viewTop').addEventListener('click',()=>{theta=0;phi=.08;updateCamera()});$('viewIso').addEventListener('click',()=>{theta=Math.PI/4;phi=1;updateCamera()});
+init();build();
+</script>
+</body></html>

@@ -44,7 +44,7 @@ function main(x, y, z) {
   return { id: 3, color: "#777d86" };
 }</textarea>
 <div id="controls">
-<div class="row"><label>幅 X/Z</label><input id="width" type="number" min="4" max="96" value="32"><label>高さ Y</label><input id="height" type="number" min="4" max="96" value="32"></div>
+<div class="row"><label>幅 X/Z</label><input id="width" type="number" min="4" max="1024" value="32"><label>高さ Y</label><input id="height" type="number" min="4" max="256" value="32"></div>
 <div class="row"><button id="run" class="primary">▶ 生成・更新</button><button id="home">視点リセット</button><label><input id="wire" type="checkbox" style="width:auto;vertical-align:middle"> ワイヤー</label></div>
 <div id="status">準備完了</div>
 <div id="help">ドラッグ: 回転 / ホイール・ピンチ: ズーム / 右ドラッグ: 移動<br>用意済み: noise2D, valueNoise3D, perlin3D, hash3D, lerp, clamp</div>
